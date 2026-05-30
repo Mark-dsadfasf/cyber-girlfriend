@@ -123,3 +123,40 @@ async sendMessage() {
 - 后端服务：✅ 运行中 (localhost:3001)
 - 前端页面：✅ 运行中 (localhost:3000)
 - 所有功能正常可用
+
+### 2026/05/31 下午修复
+
+#### 1. stripThought 正则解析问题
+- 症状：Vite 报错 `Unexpected token 'export'` 在 chat.js
+- 原因：正则表达式 `<\/?think...>` 中的 `/` 被解析成除号
+- 修复：改用 `RegExp` 构造函数（后又改回，直接写也没问题）
+
+#### 2. live2d.min.js 错误
+- 症状：`Could not find Cubism 2 runtime`
+- 原因：原文件是 live2d-widget 的 ES module 版本，不是 Cubism 2.1 runtime
+- 修复：从 CDN 下载正确的 Cubism 2.1 live2d.min.js
+
+#### 3. pixi-live2d-display.min.js 错误
+- 症状：`Unexpected token 'export'`
+- 原因：公共目录的文件被替换成错误的 cubism2.min.js
+- 修复：从 npm 包重新解压正确的版本
+
+#### 4. 端口冲突
+- 症状：多个 node 进程占用端口，API 返回 404
+- 修复：清理所有 node 进程后重新启动
+
+#### 5. MiniMax 模型配置
+- 症状：`token plan not support model, MiniMax-Text-01`
+- 修复：改用 `MiniMax-M2.7` 模型
+
+#### 6. Live2D 模型显示调整
+- 放大倍数：0.6 → 1.0
+- Y 轴偏移：居中 → -800（向上偏移）
+
+### 2026/06/01 计划
+
+- [ ] 接入语音系统（TTS/ASR）
+- [ ] 优化 Live2D 动作响应
+- [ ] 添加更多情感表情
+
+---
