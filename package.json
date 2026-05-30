@@ -1,0 +1,23 @@
+{
+  "name": "cyber-girlfriend",
+  "version": "1.0.0",
+  "description": "Live2D virtual girlfriend with AI",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "live2d-widget": "^3.1.4",
+    "live2dcubismcore": "^1.0.2",
+    "node-fetch": "^3.3.2",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^6.5.10"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
