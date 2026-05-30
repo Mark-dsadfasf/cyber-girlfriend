@@ -142,12 +142,12 @@ export class ChatSystem {
       const scale = Math.min(
         container.offsetWidth / this.live2dModel.width,
         container.offsetHeight / this.live2dModel.height
-      ) * 0.6
+      ) * 1.0
 
       this.live2dModel.scale.set(scale)
 
       this.live2dModel.x = (container.offsetWidth - this.live2dModel.width) / 2
-      this.live2dModel.y = (container.offsetHeight - this.live2dModel.height) / 2
+      this.live2dModel.y = -800
 
       console.log('Live2D 模型加载成功')
 
