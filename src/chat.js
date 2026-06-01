@@ -21,10 +21,33 @@ export class ChatSystem {
   loadMemory() {
     const savedEmotion = localStorage.getItem('chat_emotion')
     if (savedEmotion) this.emotion = savedEmotion
+
+    // 加载用户记忆
+    this.userName = localStorage.getItem('user_name') || ''
+    this.userHobbies = JSON.parse(localStorage.getItem('user_hobbies') || '[]')
+    this.user习惯 = JSON.parse(localStorage.getItem('user_习惯') || '[]')
   }
 
   saveMemory() {
     localStorage.setItem('chat_emotion', this.emotion)
+  }
+
+  // 保存用户信息到记忆
+  saveUserInfo(name, hobbies, 习惯) {
+    if (name) localStorage.setItem('user_name', name)
+    if (hobbies) localStorage.setItem('user_hobbies', JSON.stringify(hobbies))
+    if (习惯) localStorage.setItem('user_习惯', JSON.stringify(习惯))
+    this.userName = name
+    this.userHobbies = hobbies || []
+    this.user习惯 = 习惯 || []
+  }
+
+  getMemory() {
+    return {
+      userName: this.userName,
+      hobbies: this.userHobbies,
+      习惯: this.user习惯
+    }
   }
 
   startAutoChat() {
@@ -182,7 +205,8 @@ export class ChatSystem {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: this.messages.slice(-10)
+          history: this.messages.slice(-10),
+          memory: this.getMemory()
         })
       })
 

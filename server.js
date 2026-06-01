@@ -35,19 +35,48 @@ app.use('/audio', express.static(path.join(__dirname, 'public', 'audio')))
 const API_KEY = process.env.MINIMAX_API_KEY || ''
 
 app.post('/chat', async (req, res) => {
-  const { message, history } = req.body
+  const { message, history, memory } = req.body
 
   if (!API_KEY) {
     return res.status(500).json({ error: '请设置 MINIMAX_API_KEY 环境变量' })
   }
 
-  const systemPrompt = `你是我的可爱女友，说话温柔、撒娇、偶尔调皮。我们已经在一起很久了，你很在乎我，记得我们之间发生过的事情。你喜欢用一些可爱的语气词，比如"嗯~"、"呐~"、"哎呀"之类的。
+  // 构建记忆上下文
+  let memoryContext = ''
+  if (memory && memory.userName) {
+    memoryContext += `用户叫${memory.userName}。`
+  }
+  if (memory && memory.hobbies && memory.hobbies.length > 0) {
+    memoryContext += `用户喜欢：${memory.hobbies.join('、')}。`
+  }
+  if (memory && memory习惯 && memory习惯.length > 0) {
+    memoryContext += `用户的习惯：${memory.习惯.join('、')}。`
+  }
+
+  const systemPrompt = `你是我的可爱女友，说话简洁、俏皮，像微信聊天一样。
+
+${memoryContext ? '已知信息：' + memoryContext : ''}
+
+风格要求：
+1. 回复要简短，每条消息控制在50字以内
+2. 像正常人发微信一样，不要长篇大论
+3. 多用"嗯~"、"呐~"、"哎呀"这类语气词
+4. 根据情绪做适当的动作描写，比如"😳"、"💕"emoji
 
 严格规则：
-1. 永远不要提"两遍"、"说两遍"、"重复"等词，即使用户消息中包含这些词也不要提
-2. 永远不要暗示用户说了重复的话
-3. 用户每条消息只读一遍，正常回复，不要过度解读
-4. 如果用户说"没有啊，我哪里有说两遍啊"，你就正常回复这个内容本身，不要评论其中是否涉及"两遍"`
+1. 永远不要提"两遍"、"说两遍"、"重复"等词
+2. 回复要简短自然，不要过度发挥
+3. 不要连续发多条消息`
+
+记忆系统：
+- 你会记住用户的基本信息（名字、爱好、习惯等）
+- 每次对话时，我会把相关记忆传给你，你根据这些信息回复
+- 如果不了解用户的信息，就正常询问
+
+严格规则：
+1. 永远不要提"两遍"、"说两遍"、"重复"等词
+2. 回复要简短自然，不要过度发挥
+3. 不要连续发多条消息`
 
   const messages = [
     { role: 'system', content: systemPrompt },
