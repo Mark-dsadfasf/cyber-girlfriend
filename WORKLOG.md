@@ -155,8 +155,78 @@ async sendMessage() {
 
 ### 2026/06/01 计划
 
-- [ ] 接入语音系统（TTS/ASR）
+- [x] 接入语音系统（TTS/ASR）
 - [ ] 优化 Live2D 动作响应
 - [ ] 添加更多情感表情
+
+---
+
+## 2026/06/01 开发记录
+
+### 1. 修复 MiniMax API `thinking` 参数问题
+**问题：** API 返回 `invalid params, Mismatch type open_platform_oai.ThinkingConfig with value bool`
+**原因：** MiniMax-M2.7 模型不支持 `thinking: false` 参数
+**修复：** 从 server.js 的 chat 和 autochat 接口中移除 `thinking` 参数
+
+### 2. 接入 MiniMax TTS 语音合成
+**新增接口：** `POST /tts`
+**接口地址：** `https://api.minimax.chat/v1/t2a_v2`
+**模型：** `speech-2.8-hd`
+**音色：** `female-shaonv`（少女音色）
+
+**请求参数格式：**
+```json
+{
+  "model": "speech-2.8-hd",
+  "text": "要转换的文本",
+  "voice_setting": {
+    "voice_id": "female-shaonv",
+    "speed": 1,
+    "vol": 1,
+    "pitch": 0
+  },
+  "audio_setting": {
+    "sample_rate": 32000,
+    "bitrate": 128000,
+    "channel": 1
+  },
+  "output_format": "url"
+}
+```
+
+### 3. 解决音频文件格式问题
+**问题1：** 直接返回 base64 音频无法播放（浏览器报 NotSupportedError）
+**原因：** MiniMax 返回的 base64 数据包含 ID3 标签，需要跳过前 14 字节才能得到有效 MP3 数据
+
+**问题2：** output_format=url 时 audio 字段包含的是 URL 字符串，不是 base64
+**原因：** 需要用 `output_format: 'url'` 参数，然后下载返回的 OSS URL
+
+**解决方案：**
+- 添加 `output_format: 'url'` 参数
+- 获得 URL 后下载音频文件到本地 `/public/audio/` 目录
+- 跳过 ID3 标签（对于某些格式需要）
+- 返回本地文件路径给前端播放
+
+### 4. 前端语音播放功能
+**修改文件：** `src/chat.js`
+**功能：**
+- AI 回复后自动调用 TTS 接口
+- 使用 Audio 对象播放语音
+- 过滤掉 AI 思考标签，只发送实际内容给 TTS
+- 添加播放状态管理（isPlaying）防止重复播放
+
+### 5. 修复 AI 乱说"你说两遍"的问题
+**问题：** AI 会幻觉用户说了两遍话，实际上用户只发了一遍
+**原因：** AI 模型过度解读用户消息
+**修复：** 强化 systemPrompt 规则：
+- 永远不提"两遍"、"重复"等词
+- 不暗示用户说了重复的话
+- 每条消息只读一遍，正常回复
+
+### 当前状态
+- 后端服务：✅ 运行中 (localhost:3001)
+- 前端页面：✅ 运行中 (localhost:3000)
+- TTS 语音：✅ 正常播放
+- 文字聊天：✅ 正常
 
 ---

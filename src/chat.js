@@ -4,6 +4,9 @@ export class ChatSystem {
     this.emotion = 'happy' // happy, sad, angry, shy, thinking
     this.app = null
     this.live2dModel = null
+    this.audio = new Audio()
+    this.isPlaying = false
+    this.currentAudioSrc = null
   }
 
   init() {
@@ -150,6 +153,13 @@ export class ChatSystem {
       this.live2dModel.y = -800
 
       console.log('Live2D 模型加载成功')
+      console.log('模型支持的动作:', this.live2dModel.motions)
+      console.log('模型支持的表情:', this.live2dModel.expressions)
+
+      // 尝试播放 idle 动画
+      if (this.live2dModel.motion) {
+        this.live2dModel.motion('idle')
+      }
 
     } catch (err) {
       console.error('模型加载失败:', err)
@@ -178,6 +188,8 @@ export class ChatSystem {
 
       const data = await response.json()
       this.addMessage('assistant', data.text)
+      // 自动播放语音
+      await this.playAudio(data.text)
     } catch (err) {
       this.addMessage('system', '发送失败: ' + err.message)
     } finally {
@@ -191,6 +203,53 @@ export class ChatSystem {
     this.saveHistory()
     this.saveMemory()
     this.renderMessages()
+  }
+
+  async playAudio(text, voice_id = 'female-shaonv') {
+    if (!text || this.isPlaying) return
+
+    // 去除思考标签（让 TTS 只读有用内容）
+    const cleanText = this.stripThought(text)
+    if (!cleanText) return
+
+    try {
+      this.isPlaying = true
+      console.log('开始语音合成:', cleanText)
+      const response = await fetch('http://localhost:3001/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText, voice_id })
+      })
+
+      const data = await response.json()
+      console.log('TTS 返回:', data)
+      if (data.audio_url) {
+        // 停止之前的音频
+        this.audio.pause()
+        this.audio.currentTime = 0
+        this.audio.src = data.audio_url
+
+        // 监听播放事件
+        this.audio.oncanplay = () => {
+          console.log('音频可以播放了')
+          this.audio.play().then(() => {
+            console.log('播放成功')
+          }).catch(err => {
+            console.error('播放失败:', err)
+          })
+        }
+        this.audio.onerror = (e) => {
+          console.error('音频加载失败:', e)
+        }
+        console.log('开始播放:', data.audio_url)
+      } else {
+        console.log('没有音频数据')
+      }
+    } catch (err) {
+      console.error('播放语音失败:', err)
+    } finally {
+      this.isPlaying = false
+    }
   }
 
   analyzeEmotion(content, role) {
