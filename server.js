@@ -55,8 +55,7 @@ app.post('/chat', async (req, res) => {
         model: 'MiniMax-M2.7',
         messages: messages,
         max_tokens: 1024,
-        temperature: 0.9,
-        thinking: false
+        temperature: 0.9
       })
     })
 
@@ -94,8 +93,7 @@ app.get('/autochat', async (req, res) => {
           { role: 'user', content: '你在干嘛呀？' }
         ],
         max_tokens: 256,
-        temperature: 0.9,
-        thinking: false
+        temperature: 0.9
       })
     })
 
