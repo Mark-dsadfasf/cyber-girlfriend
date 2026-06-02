@@ -14,8 +14,28 @@ export class ChatSystem {
     this.loadMemory()
     this.setupUI()
     this.initPixi()
-    // 微信模式：用户发一句，她回一句；长时间没消息才主动聊
     this.startAutoChat()
+    // 页面加载时发送问候
+    this.sendGreeting()
+  }
+
+  // 发送时间问候
+  async sendGreeting() {
+    // 检查问候冷却：至少30分钟一次
+    const lastGreeting = localStorage.getItem('last_greeting_time')
+    if (lastGreeting && Date.now() - parseInt(lastGreeting) < 30 * 60 * 1000) {
+      console.log('问候冷却中，跳过')
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:3001/greeting')
+      const data = await response.json()
+      this.addMessage('assistant', data.text, false, true) // true = 是问候
+      localStorage.setItem('last_greeting_time', Date.now().toString())
+    } catch (err) {
+      console.error('问候失败:', err)
+    }
   }
 
   loadMemory() {
@@ -51,12 +71,22 @@ export class ChatSystem {
   }
 
   startAutoChat() {
-    // 微信模式：每 60 秒检查一次，只有满足条件才主动聊一句
+    // 每 60 秒检查一次
     setInterval(() => {
       if (this.messages.length === 0) return
 
       const lastMsg = this.messages[this.messages.length - 1]
       const now = Date.now()
+
+      // 检查是否需要发送问候（每30分钟一次）
+      const lastGreeting = localStorage.getItem('last_greeting_time')
+      if (!lastGreeting || now - parseInt(lastGreeting) >= 30 * 60 * 1000) {
+        // 最后一条是女友发的 → 不发了（防止连发）
+        if (lastMsg.role !== 'assistant') {
+          this.sendGreeting()
+          return
+        }
+      }
 
       // 最后一条是女友发的 → 不发了（防止连发）
       if (lastMsg.role === 'assistant') return
@@ -221,12 +251,59 @@ export class ChatSystem {
     }
   }
 
-  addMessage(role, content, autoChat = false) {
-    this.messages.push({ role, content, time: Date.now(), autoChat })
+  addMessage(role, content, autoChat = false, isGreeting = false) {
+    this.messages.push({ role, content, time: Date.now(), autoChat, isGreeting })
     this.analyzeEmotion(content, role)
     this.saveHistory()
     this.saveMemory()
     this.renderMessages()
+
+    // AI 回复时触发动作和表情
+    if (role === 'assistant') {
+      this.triggerMotion()
+      this.triggerExpression()
+    }
+  }
+
+  // 触发随机动作
+  triggerMotion() {
+    if (!this.live2dModel || !this.live2dModel.motion) return
+
+    // 根据情绪选择动作分组
+    let group = 'tap'  // 默认用 tap 组的动作
+
+    const emotionMotionMap = {
+      'happy': ['tap'],    // 开心用 tap 组的动作
+      'angry': ['tap'],    // 生气
+      'shy': ['tap'],      // 害羞
+      'sad': ['tap'],      // 难过
+      'thinking': ['tap'], // 思考
+    }
+
+    // 随机选一个动作组
+    const groups = emotionMotionMap[this.emotion] || ['tap']
+    const selectedGroup = groups[Math.floor(Math.random() * groups.length)]
+
+    console.log('触发动作组:', selectedGroup, '情绪:', this.emotion)
+    this.live2dModel.motion(selectedGroup)
+  }
+
+  // 触发表情
+  triggerExpression() {
+    if (!this.live2dModel || !this.live2dModel.expression) return
+
+    // 情绪对应的表情文件
+    const emotionExpressions = {
+      'happy': 'f01',    // 开心
+      'angry': 'f03',    // 生气
+      'shy': 'f05',      // 害羞
+      'sad': 'f06',      // 难过
+      'thinking': 'f07', // 思考
+    }
+
+    const expression = emotionExpressions[this.emotion] || 'f01'
+    console.log('触发表情:', expression, '情绪:', this.emotion)
+    this.live2dModel.expression(expression)
   }
 
   async playAudio(text, voice_id = 'female-shaonv') {
@@ -277,15 +354,21 @@ export class ChatSystem {
   }
 
   analyzeEmotion(content, role) {
-    if (role === 'assistant') {
-      if (content.includes('想我') || content.includes('喜欢') || content.includes('开心')) {
-        this.emotion = 'happy'
-      } else if (content.includes('生气') || content.includes('哼') || content.includes('讨厌')) {
-        this.emotion = 'angry'
-      } else if (content.includes('害羞') || content.includes('脸红')) {
-        this.emotion = 'shy'
-      } else if (content.includes('难过') || content.includes('伤心') || content.includes('哭')) {
-        this.emotion = 'sad'
+    if (role !== 'assistant') return
+
+    // 情绪关键词映射
+    const emotionKeywords = {
+      'happy': ['开心', '高兴', '喜欢', '么么', '爱你', '哈哈', '嘻', '好开心', '超喜欢', '可爱', '嘿嘿', ':)', '♥'],
+      'angry': ['生气', '哼', '讨厌', '不理', '气死了', '烦', '讨厌', '哼！', '哼唧'],
+      'shy': ['害羞', '脸红', '不好意思', '羞羞', '羞死啦', '脸红红的'],
+      'sad': ['难过', '伤心', '哭', '委屈', '沮丧', '呜呜', '想哭', '难过']
+    }
+
+    for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
+      if (keywords.some(k => content.includes(k))) {
+        this.emotion = emotion
+        this.saveMemory()
+        break
       }
     }
   }

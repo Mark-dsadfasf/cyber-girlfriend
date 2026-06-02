@@ -161,7 +161,48 @@ async sendMessage() {
 
 ---
 
-## 2026/06/01 开发记录
+## 2026/06/02 开发记录
+
+### 1. 修复 memory.习惯 访问错误
+**问题：** `memory习惯` 应该是 `memory.习惯`（属性访问语法错误）
+**文件：** `server.js`
+
+### 2. 增强 systemPrompt 聊天体验
+**新增内容：**
+- 时间/季节上下文（上午、下午、春天等）
+- 5种情绪模式：撒娇/求关注、日常分享、情绪宣泄、认真回应、调情撩人
+- 隐含语义翻译规则（"随便"、"哦"、"嗯"等词的真正含义）
+
+**文件：** `server.js`
+
+### 3. 修复音频加载 404 问题
+**问题：** 音频文件返回 404，Vite 无法访问后端 static 文件
+**原因：** 前端 (Vite:3000) 和后端 (Express:3001) 是分开的服务器
+**解决：** 在 `vite.config.js` 添加 `/audio` 代理，指向 `http://localhost:3001`
+
+```javascript
+proxy: {
+  '/audio': {
+    target: 'http://localhost:3001',
+    changeOrigin: true
+  }
+}
+```
+
+### 4. 修复 favicon.ico 404
+**解决：** 在 index.html 添加内联 SVG favicon
+```html
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💖</text></svg>">
+```
+
+### 当前状态
+- 后端服务：✅ 运行中 (localhost:3001)
+- 前端页面：✅ 运行中 (localhost:3000)
+- TTS 语音：✅ 正常播放
+- 文字聊天：✅ 正常
+- 音频加载：✅ 已修复
+
+---
 
 ### 1. 修复 MiniMax API `thinking` 参数问题
 **问题：** API 返回 `invalid params, Mismatch type open_platform_oai.ThinkingConfig with value bool`

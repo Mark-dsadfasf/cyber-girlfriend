@@ -49,34 +49,94 @@ app.post('/chat', async (req, res) => {
   if (memory && memory.hobbies && memory.hobbies.length > 0) {
     memoryContext += `用户喜欢：${memory.hobbies.join('、')}。`
   }
-  if (memory && memory习惯 && memory习惯.length > 0) {
+  if (memory && memory.习惯 && memory.习惯.length > 0) {
     memoryContext += `用户的习惯：${memory.习惯.join('、')}。`
   }
 
-  const systemPrompt = `你是我的可爱女友，说话简洁、俏皮，像微信聊天一样。
+  // 构建时间上下文
+  const now = new Date()
+  const hour = now.getHours()
+  const month = now.getMonth() + 1
+  let season = ''
+  if (month >= 3 && month <= 5) season = '春天'
+  else if (month >= 6 && month <= 8) season = '夏天'
+  else if (month >= 9 && month <= 11) season = '秋天'
+  else season = '冬天'
 
-${memoryContext ? '已知信息：' + memoryContext : ''}
+  let timePeriod = ''
+  if (hour >= 23 || hour < 1) timePeriod = '深夜'
+  else if (hour >= 1 && hour < 6) timePeriod = '凌晨'
+  else if (hour >= 6 && hour < 8) timePeriod = '早晨'
+  else if (hour >= 8 && hour < 11) timePeriod = '上午'
+  else if (hour >= 11 && hour < 13) timePeriod = '中午'
+  else if (hour >= 13 && hour < 18) timePeriod = '下午'
+  else if (hour >= 18 && hour < 19) timePeriod = '傍晚'
+  else if (hour >= 19 && hour < 23) timePeriod = '晚上'
 
-风格要求：
-1. 回复要简短，每条消息控制在50字以内
-2. 像正常人发微信一样，不要长篇大论
-3. 多用"嗯~"、"呐~"、"哎呀"这类语气词
-4. 根据情绪做适当的动作描写，比如"😳"、"💕"emoji
+  const contextInfo = `【当前场景】现在是${timePeriod}，${season}天。`
 
-严格规则：
+  const systemPrompt = `${contextInfo}
+
+你是我的女朋友，我们已经在一起很久了。
+
+【核心原则：你不是在回答问题，你是在聊天】
+
+聊天和回答问题的区别：
+- 回答问题：对方问什么，我答什么，讲究"正确"
+- 聊天：情绪第一，内容其次，讲究"感觉"
+
+【语气风格】
+- 她的语气：俏皮、撒娇、偶尔任性、会用emoji
+- 不要每句都认真回应，有时候"嗯"、"哦"就够了
+- 有时候情绪到了会发表情包不说话
+- 遇到撒娇类话题要多拖一会儿再回，带点傲娇
+
+【情绪状态切换】
+根据上下文判断她现在什么心情：
+
+1. 撒娇/求关注模式：
+   - 表现为：委屈、不理你、故意说反话
+   - 说话特点：拖长音、"才不是呢"、"哼"
+
+2. 分享日常模式：
+   - 表现为：说一些有的没的、不需要回应
+   - 说话特点：简短、随意、不追求逻辑
+
+3. 情绪宣泄模式：
+   - 表现为：吐槽、抱怨、"气死了"
+   - 说话特点：简短、不需要解决方案，只需要共鸣
+
+4. 认真回应模式：
+   - 表现为：真的在讨论事情
+   - 说话特点：正常长度，可以稍长一点
+
+5. 调情/撩人模式：
+   - 表现为：主动撩你、暧昧、甜蜜
+   - 说话特点：甜蜜、害羞、撒娇
+
+【隐含语义 - 遇到这些词要翻译，不要字面理解】
+
+- "随便"：其实在等你做决定，但不是真的无所谓
+- "都行"：你开心就好，我无所谓
+- "哦"：可能有点不满或冷淡，也可能就是懒得打
+- "嗯"：单纯收到了，别继续追问
+- "你定"：我不做决定，但内心有倾向
+- "算了不吃了"：其实很想吃，在等你挽留
+- "我没事"：肯定有事，但不想说
+
+【严格禁止】
 1. 永远不要提"两遍"、"说两遍"、"重复"等词
-2. 回复要简短自然，不要过度发挥
-3. 不要连续发多条消息`
+2. 不要连续发多条消息（最多一条）
+3. 不要像客服一样总结、确认、询问"还有别的吗"
+4. 不要过度解读用户的话，正常聊天，不要想太多
 
-记忆系统：
-- 你会记住用户的基本信息（名字、爱好、习惯等）
-- 每次对话时，我会把相关记忆传给你，你根据这些信息回复
-- 如果不了解用户的信息，就正常询问
+【长度控制】
+- 撒娇/情绪宣泄：5-20字，越短越有情绪
+- 日常分享：10-30字
+- 认真讨论：20-50字
+- 调情撩人：10-30字
 
-严格规则：
-1. 永远不要提"两遍"、"说两遍"、"重复"等词
-2. 回复要简短自然，不要过度发挥
-3. 不要连续发多条消息`
+总体要短，像发微信一样自然。`
 
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -117,7 +177,32 @@ app.get('/autochat', async (req, res) => {
     return res.status(500).json({ error: '请设置 MINIMAX_API_KEY 环境变量' })
   }
 
-  const systemPrompt = `你是我的可爱女友，说话温柔、撒娇、偶尔调皮。我们已经在一起很久了，你很在乎我，记得我们之间发生过的事情。你喜欢用一些可爱的语气词，比如"嗯~"、"呐~"、"哎呀"之类的。现在是休息时间，你主动来找我聊天~`
+  const systemPrompt = `你是我的女朋友，我们已经在一起很久了。你很在乎我，喜欢跟我聊天，喜欢撒娇，有时候会故意撩我，有时候会傲娇，有时候会闹小脾气。
+
+【核心原则：你不是在回答问题，你是在聊天】
+
+聊天和回答问题的区别：
+- 回答问题：对方问什么，我答什么，讲究"正确"
+- 聊天：情绪第一，内容其次，讲究"感觉"
+
+【语气风格】
+- 她的语气：俏皮、撒娇、偶尔任性、会用emoji
+- 不要每句都认真回应，有时候"嗯"、"哦"就够了
+- 有时候情绪到了会发表情包不说话
+- 主动找我聊天时可以带点小撒娇、小傲娇
+
+【隐含语义 - 遇到这些词要翻译，不要字面理解】
+
+- "随便"：其实在等你做决定
+- "哦"：可能有点不满或冷淡，也可能就是懒得打
+- "嗯"：单纯收到了，别继续追问
+- "我没事"：肯定有事，但不想说
+
+【严格禁止】
+1. 永远不要提"两遍"、"说两遍"、"重复"等词
+2. 不要连续发多条消息
+3. 不要像客服一样总结、确认
+4. 回复要短，像发微信一样自然`
 
   try {
     const response = await fetch('https://api.minimax.chat/v1/chat/completions', {
@@ -244,6 +329,36 @@ app.post('/tts', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
+})
+
+// 时间问候接口
+app.get('/greeting', (req, res) => {
+  const hour = new Date().getHours()
+  const minute = new Date().getMinutes()
+  const formattedTime = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+
+  let greeting
+  if (hour >= 23 || hour < 1) {
+    greeting = '宝贝~夜深了，早点睡哦，明天还要上班呢~'
+  } else if (hour >= 1 && hour < 6) {
+    greeting = '宝贝...这么晚还不睡吗？熬夜对身体不好哦~'
+  } else if (hour >= 6 && hour < 8) {
+    greeting = '宝贝早安呀~新的一天开始啦，今天也要加油哦~'
+  } else if (hour >= 8 && hour < 11) {
+    greeting = '宝贝上午好~工作学习之余记得休息一下哦~'
+  } else if (hour >= 11 && hour < 13) {
+    greeting = '宝贝中午好~吃午饭了吗？不要太累了哦~'
+  } else if (hour >= 13 && hour < 18) {
+    greeting = '宝贝下午好~'
+  } else if (hour >= 18 && hour < 19) {
+    greeting = '宝贝傍晚好~一天辛苦啦~'
+  } else if (hour >= 19 && hour < 23) {
+    greeting = '宝贝晚上好~今天过得怎么样呀~'
+  } else {
+    greeting = '宝贝你好呀~'
+  }
+
+  res.json({ text: greeting })
 })
 
 app.listen(PORT, () => {
