@@ -8,8 +8,8 @@ import { readFileSync, existsSync } from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// 手动读取 .env 文件（避免依赖 dotenv）
-const envPath = path.join(__dirname, '.env')
+// 手动读取 .env.local 文件（避免依赖 dotenv）
+const envPath = path.join(__dirname, '.env.local')
 if (existsSync(envPath)) {
   const envContent = readFileSync(envPath, 'utf8')
   for (const line of envContent.split('\n')) {
@@ -57,6 +57,7 @@ app.post('/chat', async (req, res) => {
   const now = new Date()
   const hour = now.getHours()
   const month = now.getMonth() + 1
+  const dayOfWeek = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]
   let season = ''
   if (month >= 3 && month <= 5) season = '春天'
   else if (month >= 6 && month <= 8) season = '夏天'
@@ -73,7 +74,7 @@ app.post('/chat', async (req, res) => {
   else if (hour >= 18 && hour < 19) timePeriod = '傍晚'
   else if (hour >= 19 && hour < 23) timePeriod = '晚上'
 
-  const contextInfo = `【当前场景】现在是${timePeriod}，${season}天。`
+  const contextInfo = `【当前场景】现在是${dayOfWeek}，${timePeriod}，${season}天。`
 
   const systemPrompt = `${contextInfo}
 

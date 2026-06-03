@@ -636,10 +636,68 @@ const motionMap = {
 
 **升级时只需要修改 `startLipSyncMotion()` 方法，其他代码不变。**
 
-#### 2.6 相关文件
+#### 2.6 方案1：音量驱动口型同步（当前实现）
+
+**原理：** 使用 Web Audio API 的 `AnalyserNode` 实时分析音频音量，映射到嘴巴参数 `PARAM_MOUTH_OPEN_Y`
+
+**实现代码：**
+```javascript
+bindLipsync(audioElement) {
+  const ctx = new AudioContext()
+  const src = ctx.createMediaElementSource(audioElement)
+  const analyser = ctx.createAnalyser()
+  analyser.fftSize = 256
+  src.connect(analyser)
+  analyser.connect(ctx.destination)
+  
+  const data = new Uint8Array(analyser.frequencyBinCount)
+  const update = () => {
+    analyser.getByteFrequencyData(data)
+    let sum = 0
+    for (let i = 0; i < data.length; i++) sum += data[i]
+    const vol = sum / data.length / 255
+    const mouthOpen = Math.min(1.0, vol * 2.5)
+    this.live2dModel.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', mouthOpen)
+    this.lipsyncRaf = requestAnimationFrame(update)
+  }
+  update()
+}
+```
+
+**验证结果：**
+- 参数 `PARAM_MOUTH_OPEN_Y` 可以正常设置和读取
+- 口型同步**有效果**，嘴巴会跟着音量动
+
+#### 2.7 当前问题
+
+**问题1：情绪动作覆盖口型参数**
+- **现象：** 掐腰等 Tap 组动作播放时，口型不动
+- **原因：** Tap 组动作包含完整身体动画，会覆盖 `PARAM_MOUTH_OPEN_Y` 参数
+- **状态：** 待解决
+
+**问题2：AudioContext 重复连接错误**
+- **现象：** `InvalidStateError: Cannot close a closed AudioContext`
+- **原因：** 每次播放新建 AudioContext，结束时重复 close
+- **状态：** 待修复
+
+#### 2.8 进阶方案（未来实现）
+
+当简单方案效果不够好时，升级到进阶方案：
+
+**方案A：官方 Cubism Web SDK + MotionSync Plugin**
+- 完整支持 `motionsync3.json` 配置
+- 实时元音（A/I/U/E/O）分析驱动口型
+- 需要独立项目结构，不能混用 pixi-live2d-display
+
+**方案B：混合过渡方案**
+- 保留 pixi-live2d-display 渲染层
+- 自己实现 Web Audio API 音频分析器
+- 每帧更新嘴巴参数
+
+#### 2.9 相关文件
 - `public/models/*/motion/*.motion3.json` - 口型动作文件
 - `public/models/*/*.moc3` - 模型数据
-- `src/chat.js` - 口型同步逻辑
+- `src/chat.js` - 口型同步逻辑（bindLipsync 方法）
 
 ---
 
@@ -650,12 +708,13 @@ const motionMap = {
 - TTS 语音：✅ 正常播放
 - 文字聊天：✅ 正常
 - 模型切换：✅ 8个模型可选
-- 口型同步：⚠️ 简单方案已实现，但存在动作冲突问题
+- 口型同步：⚠️ 方案1（音量驱动）已实现，部分模型有效但存在冲突问题
 
 ---
 
 ### 4. 待解决问题
 
-1. **口型同步冲突** - `triggerMotion()` 和 `startLipSyncMotion()` 同时触发导致动作覆盖
-2. **日更模型穿模** - 付费版 hiyori_vts 显示异常，免费版 hiyori_free 正常
-3. **进阶口型方案** - 当前简单方案效果有限，需要升级到实时音频分析方案
+1. **口型参数被情绪动作覆盖** - 掐腰等动作播放时口型不动
+2. **AudioContext 重复 close 错误** - 需要修复
+3. **日更模型穿模** - 付费版 hiyori_vts 显示异常
+4. **进阶口型方案** - 需要官方 SDK 才能完整支持惠的 MotionSync

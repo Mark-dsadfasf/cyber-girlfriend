@@ -33,6 +33,53 @@
       overflow: hidden;
       background: transparent;
     }
+    /* 模型选择器 */
+    #model-selector {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 30px;
+      backdrop-filter: blur(10px);
+      z-index: 100;
+    }
+    .model-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+    .model-avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      transition: all 0.2s ease;
+      object-fit: cover;
+      background: rgba(255,255,255,0.1);
+    }
+    .model-item:hover .model-avatar {
+      transform: scale(1.1);
+      border-color: rgba(255,255,255,0.3);
+    }
+    .model-item.active .model-avatar {
+      border-color: #6366f1;
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.5);
+    }
+    .model-name {
+      font-size: 12px;
+      color: rgba(255,255,255,0.8);
+      text-align: center;
+    }
+    .model-item.active .model-name {
+      color: #fff;
+      font-weight: bold;
+    }
     /* 聊天区域 */
     #chat-container {
       flex: 1;
@@ -111,7 +158,9 @@
 </head>
 <body>
   <div id="app">
-    <div id="canvas-container"></div>
+    <div id="canvas-container">
+      <div id="model-selector"></div>
+    </div>
     <div id="chat-container">
       <div id="chat-messages"></div>
       <div id="chat-input-area">
@@ -121,11 +170,13 @@
     </div>
   </div>
 
-  <!-- Live2D Cubism 2.1 Runtime -->
+  <!-- Live2D Cubism Core (Cubism 4 需要这个) -->
+  <script src="/live2dcubismcore.min.js"></script>
+  <!-- Live2D Cubism 2.1 Runtime (for haru .moc) -->
   <script src="/live2d.min.js"></script>
   <!-- PIXI.js -->
   <script src="/pixi.min.js"></script>
-  <!-- pixi-live2d-display (Cubism 2 & 4) -->
+  <!-- pixi-live2d-display (完整版，支持 Cubism 2/3/4) -->
   <script src="/pixi-live2d-display.min.js"></script>
   <!-- Main App -->
   <script type="module" src="/src/main.js"></script>

@@ -57,6 +57,8 @@ export class ChatSystem {
     this.audio = new Audio()
     this.isPlaying = false
     this.currentAudioSrc = null
+    this.lipsyncCtx = null
+    this.lipsyncRaf = null
     this.PIXI = null
     this.Live2DModel = null
     this.currentModel = 'haru'
@@ -398,19 +400,19 @@ export class ChatSystem {
   triggerMotion() {
     if (!this.live2dModel || !this.live2dModel.motion) return
 
-    // 根据情绪选择动作分组
-    let group = 'tap'  // 默认用 tap 组的动作
+    // 根据情绪选择动作分组（Tap 组：手势、站姿等，不影响嘴巴）
+    let group = 'Tap'
 
     const emotionMotionMap = {
-      'happy': ['tap'],    // 开心用 tap 组的动作
-      'angry': ['tap'],    // 生气
-      'shy': ['tap'],      // 害羞
-      'sad': ['tap'],      // 难过
-      'thinking': ['tap'], // 思考
+      'happy': ['Tap'],    // 开心
+      'angry': ['Tap'],    // 生气
+      'shy': ['Tap'],      // 害羞
+      'sad': ['Tap'],      // 难过
+      'thinking': ['Tap'], // 思考
     }
 
     // 随机选一个动作组
-    const groups = emotionMotionMap[this.emotion] || ['tap']
+    const groups = emotionMotionMap[this.emotion] || ['Tap']
     const selectedGroup = groups[Math.floor(Math.random() * groups.length)]
 
     console.log('触发动作组:', selectedGroup, '情绪:', this.emotion)
@@ -448,13 +450,17 @@ export class ChatSystem {
       const data = await synthesizeSpeech(cleanText, voice_id)
       console.log('TTS 返回:', data)
       if (data.audio_url) {
-        // 停止之前的音频
-        this.audio.pause()
-        this.audio.currentTime = 0
+        // 停止之前的音频并清理
+        if (this.audio) {
+          this.audio.pause()
+          this.audio.src = ''
+        }
+        // 使用新的 Audio 元素，避免重复连接问题
+        this.audio = new Audio()
         this.audio.src = data.audio_url
 
-        // 播放口型动画
-        this.startLipSyncMotion()
+        // 方案1：绑定音量驱动口型同步
+        this.bindLipsync(this.audio)
 
         // 监听播放事件
         this.audio.oncanplay = () => {
@@ -464,15 +470,6 @@ export class ChatSystem {
           }).catch(err => {
             console.error('播放失败:', err)
           })
-        }
-        // 监听播放结束，恢复 idle
-        this.audio.onended = () => {
-          console.log('音频播放结束')
-          this.stopLipSyncMotion()
-        }
-        this.audio.onerror = (e) => {
-          console.error('音频加载失败:', e)
-          this.stopLipSyncMotion()
         }
         console.log('开始播放:', data.audio_url)
       } else {
@@ -486,30 +483,113 @@ export class ChatSystem {
   }
 
   startLipSyncMotion() {
-    if (!this.live2dModel?.motion) return
-    // 根据模型选择对应的说话动作组（必须是 model3.json 中定义的组名）
-    const motionMap = {
-      'haru': 'Tap',
-      'tsumiki': 'Tap',
-      'epsilon': 'Tap',
-      'hiyori_free': 'Tap',
-      'kei': '01_kei_zh'
+    if (!this.live2dModel?.motion) {
+      console.log('口型同步失败: 没有 live2dModel')
+      return
     }
-    const motionGroup = motionMap[this.currentModel] || 'm_01'
-    console.log('播放口型动作:', motionGroup)
-    this.live2dModel.motion(motionGroup).then(() => {
-      console.log('口型动作播放成功:', motionGroup)
-    }).catch((err) => {
-      console.log('口型动作播放失败:', motionGroup, err)
-      // 备用方案
-      this.live2dModel.motion('m_01').catch(() => {})
-    })
+    // 直接指定有口型的动作文件
+    const lipMotionFile = {
+      'epsilon': 'Epsilon_m_07.motion3.json',
+      'tsumiki': 'tsumiki_m_01.motion3.json',
+      'kei': 'motions/01_kei_zh.motion3.json'
+    }
+    const file = lipMotionFile[this.currentModel]
+    if (file) {
+      console.log('播放口型文件:', file)
+      this.live2dModel.motion('Flick', file).then(() => {
+        console.log('口型动画播放成功')
+      }).catch((err) => {
+        console.log('口型动画播放失败:', err)
+      })
+    } else {
+      console.log('当前模型没有配置口型文件')
+    }
   }
 
   stopLipSyncMotion() {
-    if (!this.live2dModel?.motion) return
-    // 恢复正常 idle 动画
-    this.live2dModel.motion('idle').catch(() => {})
+    // 音频结束后不额外处理
+  }
+
+  // 方案1：音量驱动口型同步
+  bindLipsync(audioElement) {
+    if (!this.live2dModel?.internalModel?.coreModel) {
+      console.log('口型同步失败: 没有 coreModel')
+      return
+    }
+    const mouthParam = 'PARAM_MOUTH_OPEN_Y'
+    // 测试：先手动设置一个值看看参数是否存在
+    console.log('测试设置嘴巴参数...')
+    const testValue = 0.5
+    this.live2dModel.internalModel.coreModel.setParameterValueById(mouthParam, testValue)
+    // 读取回来看看有没有变化
+    const readBack = this.live2dModel.internalModel.coreModel.getParameterValueById(mouthParam)
+    console.log('设置的值:', testValue, '读回的值:', readBack)
+    if (readBack !== testValue) {
+      console.log('参数设置无效，可能参数名不对')
+      // 列出所有可用参数
+      const paramCount = this.live2dModel.internalModel.coreModel.getParameterCount()
+      console.log('模型参数数量:', paramCount)
+      for (let i = 0; i < paramCount; i++) {
+        console.log('参数', i, ':', this.live2dModel.internalModel.coreModel.getParameterId(i), '=', this.live2dModel.internalModel.coreModel.getParameterValue(i))
+      }
+    }
+    // 如果已经有关联的 AudioContext，先清理
+    if (this.lipsyncCtx) {
+      try {
+        this.lipsyncCtx.close()
+      } catch (e) {}
+      this.lipsyncCtx = null
+    }
+    if (this.lipsyncRaf) {
+      cancelAnimationFrame(this.lipsyncRaf)
+      this.lipsyncRaf = null
+    }
+    const ctx = new (window.AudioContext || window.webkitAudioContext)()
+    let src
+    try {
+      src = ctx.createMediaElementSource(audioElement)
+    } catch (e) {
+      // 如果 audioElement 已经被连接过，说明音频正在播放，直接用当前context
+      console.log('音频已在播放，跳过口型同步')
+      ctx.close()
+      return
+    }
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 256
+    src.connect(analyser)
+    src.connect(ctx.destination)
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    console.log('口型同步：使用参数', 'PARAM_MOUTH_OPEN_Y')
+    const stopLipSync = () => {
+      if (this.lipsyncRaf) {
+        cancelAnimationFrame(this.lipsyncRaf)
+        this.lipsyncRaf = null
+      }
+      // 重置嘴巴参数
+      this.live2dModel.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', 0)
+      ctx.close()
+      this.lipsyncCtx = null
+      console.log('口型同步停止')
+    }
+    // 监听音频结束
+    audioElement.onended = () => {
+      stopLipSync()
+    }
+    audioElement.onerror = () => {
+      stopLipSync()
+    }
+    const update = () => {
+      analyser.getByteFrequencyData(data)
+      let sum = 0
+      for (let i = 0; i < data.length; i++) sum += data[i]
+      const vol = sum / data.length / 255
+      // 音量映射到嘴巴张合度（0-1）
+      const mouthOpen = Math.min(1.0, vol * 2.5)
+      this.live2dModel.internalModel.coreModel.setParameterValueById('PARAM_MOUTH_OPEN_Y', mouthOpen)
+      this.lipsyncRaf = requestAnimationFrame(update)
+    }
+    update()
+    this.lipsyncCtx = ctx
   }
 
   analyzeEmotion(content, role) {
