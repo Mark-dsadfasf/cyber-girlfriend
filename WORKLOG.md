@@ -271,3 +271,391 @@ proxy: {
 - 文字聊天：✅ 正常
 
 ---
+---
+
+## 2026/06/02 下午开发记录
+
+### 1. 专家建议优化实施
+
+根据专家建议，完成了以下优化：
+
+#### 1.1 创建 src/api.js 管理 API 调用
+- 集中管理所有后端 API 调用（sendChat, autoChat, getGreeting, synthesizeSpeech）
+- 添加重试机制（最多3次，指数退避）
+- 使用环境变量配置 API 地址
+
+#### 1.2 更新 vite.config.js 配置代理
+```javascript
+server: {
+  port: 5173,
+  proxy: {
+    '/api': {
+      target: 'http://localhost:3001',
+      rewrite: (path) => path.replace(/^\/api/, '')
+    },
+    '/audio': 'http://localhost:3001'
+  }
+}
+```
+
+#### 1.3 添加错误处理和重试机制
+- API 请求失败时自动重试，最多重试3次
+- 指数退避等待（1s, 2s, 3s）
+
+#### 1.4 优化 Live2D 模型加载方式
+- 使用 ES Module 导入（但发现 pixi-live2d-display 需要通过 script 标签全局加载）
+- 保留通过 window.PIXI.live2d 的方式
+
+#### 1.5 环境变量安全保护
+- .env 重命名为 .env.local（已被 gitignore）
+- 创建 .env.local.example 模板文件
+
+---
+
+### 2. 模型切换功能实现
+
+#### 2.1 创建模型选择器 UI
+- 在 canvas-container 底部添加模型头像选择栏
+- 胶囊形状，半透明背景
+
+#### 2.2 实现动态模型加载
+- 支持切换不同的 Live2D 模型
+- 当前模型保存在 localStorage
+
+#### 2.3 复制 VTube Studio 模型到项目
+从 F:/SteamLibrary/steamapps/common/VTube Studio/VTube Studio_Data/StreamingAssets/Live2DModels 复制：
+- tororo_vts → tororo_vts（后改名为日更）
+- akari_vts → akari_vts
+- hiyori_vts → hiyori_vts
+
+#### 2.4 模型重命名
+- tororo.model3.json → tororo.model.json
+- akari.model3.json → akari.model.json
+- hiyori.model3.json → hiyori.model.json
+
+#### 2.5 模型列表更新
+```javascript
+const AVAILABLE_MODELS = [
+  {
+    id: 'haru',
+    name: '小春',
+    avatar: '/models/haru/haru.1024/texture_00.png',
+    description: '治愈系女友',
+    modelFile: 'haru.model.json'
+  },
+  {
+    id: 'hiyori',
+    name: '日更',
+    avatar: '/models/hiyori_vts/icon.jpg',
+    description: '元气少女',
+    modelFile: 'hiyori.model.json',
+    folder: 'hiyori_vts'
+  },
+  {
+    id: 'akari',
+    name: '灯',
+    avatar: '/models/akari_vts/icon.jpg',
+    description: '温柔元气',
+    modelFile: 'akari.model.json',
+    folder: 'akari_vts'
+  }
+]
+```
+
+---
+
+### 3. 调整各模型的 Y 轴位置
+
+通过反复测试调整，最终确定各模型的 Y 位置：
+
+| 角色 | Y 位置 | 说明 |
+|---|---|---|
+| 小春 | -800 | 原始位置 |
+| 日更 | -1 | 偏低一点 |
+| 灯 | 1 | 正常显示 |
+
+**注意：** 代码中使用 `??` 运算符避免 0 值被误判为 falsy
+
+---
+
+### 4. 修复 Live2D 库加载问题
+
+#### 4.1 切换到 Cubism 4 库
+- 从 VTube Studio 复制过来的模型是 .moc3 格式（Cubism 3/4）
+- 需要使用 cubism4.min.js 或完整版 index.min.js
+
+#### 4.2 当前引用的库文件
+```html
+<!-- Live2D Cubism Core (Cubism 4 需要这个) -->
+<script src="/live2dcubismcore.min.js"></script>
+<!-- Live2D Cubism 2.1 Runtime (for haru .moc) -->
+<script src="/live2d.min.js"></script>
+<!-- PIXI.js -->
+<script src="/pixi.min.js"></script>
+<!-- pixi-live2d-display (完整版，支持 Cubism 2/3/4) -->
+<script src="/pixi-live2d-display.min.js"></script>
+```
+
+---
+
+### 5. 中间遇到的问题及解决方案
+
+#### 问题1：Live2D 库加载失败
+- **现象**：报错 "Could not find Cubism 4 runtime"
+- **原因**：`live2dcubismcore.min.js` 没有引入，加载顺序也不对
+- **解决**：在 index.html 中添加核心库，调整为正确顺序
+
+#### 问题2：模型切换后加载失败
+- **现象**：报错 "Failed to load resource as json (Status 200)" 找不到模型文件
+- **原因**：代码里模型 ID 是 `tororo`，但实际文件夹叫 `tororo_vts`
+- **解决**：在模型配置里加 `folder` 字段指定实际目录名
+
+#### 问题3：Y 位置改成 0 没效果
+- **现象**：设置 `tororo: 0` 时位置不变，和 `-800` 一样
+- **原因**：JavaScript 里 `0` 是 falsy 值，`|| -800` 走了默认值
+- **解决**：改用 `??` 运算符（只在 null/undefined 时用默认值）
+
+#### 问题4：日更模型穿模
+- **现象**：日更显示出来手有四个，身体变形
+- **原因**：VTube Studio 对模型做了非标准修改，网页库解析出错
+- **状态**：未解决，需要用 Live2D Cubism Editor 重新导出
+
+#### 问题5：模型文件夹无法重命名
+- **现象**：Windows 权限问题，`tororo_vts` 无法改名成 `tororo`
+- **解决**：保留原名，通过配置里的 `folder` 字段区分
+
+---
+
+### 6. 当前状态
+
+- 后端服务：✅ 运行中 (localhost:3001)
+- 前端页面：✅ 运行中 (localhost:5173)
+- TTS 语音：✅ 正常播放
+- 文字聊天：✅ 正常
+- 模型切换：✅ 基本功能正常，但 VTube Studio 模型可能有显示问题
+
+---
+
+### 7. 待解决问题
+
+1. **日更模型显示异常** - VTube Studio 导出的模型在 pixi-live2d-display 中显示异常（穿模、手臂数量异常）
+   - 原因：VTube Studio 对模型做了修改，非标准格式
+   - 解决方案：用 Live2D Cubism Editor 重新导出
+
+2. **模型文件夹无法重命名** - Windows 权限问题，tororo_vts/akari_vts/hiyori_vts 无法直接重命名
+   - 临时方案：在配置中使用 folder 字段指定实际目录名
+
+---
+
+### 8. 文件变更汇总
+
+**新增文件：**
+- src/api.js - API 管理模块
+- vite.config.js - Vite 配置（更新）
+- .env.local.example - 环境变量模板
+
+**修改文件：**
+- src/chat.js - 添加模型切换功能、重试机制、模型配置结构
+- index.html - 调整库加载顺序、添加模型选择器 UI
+- server.js - 读取 .env.local
+- WORKLOG.md - 本次更新
+
+**删除文件：**
+- public/cubism4.min.js - 改用 index.min.js
+- public/cubism2.min.js - 不需要单独版本
+
+---
+
+### 9. 代码逻辑分析
+
+#### 模型配置结构
+```javascript
+AVAILABLE_MODELS = [
+  { id: 'haru', name: '小春', modelFile: 'haru.model.json' },
+  { id: 'hiyori', name: '日更', modelFile: 'hiyori.model.json', folder: 'hiyori_vts' },
+  { id: 'akari', name: '灯', modelFile: 'akari.model.json', folder: 'akari_vts' }
+]
+```
+
+#### Y 位置配置
+```javascript
+const modelYOffset = {
+  'haru': -800,
+  'hiyori': -1,
+  'akari': 1
+}
+```
+
+#### 存在的问题
+1. **动作触发**：硬编码用 `tap` 组，不是所有模型都有
+2. **表情触发**：硬编码 haru 的表情名（f01-f08），日更/灯用不同命名
+3. **Idle 动画**：写死 `idle`，不一定所有模型都有叫 idle 的动作
+
+#### 建议改进
+每个模型的配置应该包含自己的动作和表情映射，例如：
+```javascript
+{
+  id: 'akari',
+  name: '灯',
+  yOffset: 1,
+  motions: { 'happy': ['Love', 'Idle_2'], 'angry': ['Shock'], ... },
+  expressions: { 'happy': 'EyesLove', 'angry': 'SignAngry', ... },
+  idleMotion: 'Idle_2'
+}
+```
+
+---
+
+### 10. 今日完成内容总结
+
+**完成项：**
+- ✅ 实施专家建议的 4 项优化（API 管理、重试机制、环境变量、模型加载）
+- ✅ 实现模型切换功能（左下角头像选择栏）
+- ✅ 添加小春、日更、灯三个角色
+- ✅ 调整各模型 Y 位置（小春 -800，日更 -1，灯 1）
+- ✅ 在头像下方显示角色名字
+- ✅ 完成代码逻辑分析，发现需要改进的地方
+
+**待解决：**
+- ❌ 日更模型穿模问题需用 Live2D Cubism Editor 重新导出
+- ❌ 日更/灯的动作/表情触发需配置专属映射
+- ❌ Live2D Cubism Editor 需重新安装
+
+---
+
+### 11. 模型资源汇总
+
+**haru（小春）：**
+- 路径：/models/haru/
+- 格式：Cubism 2.1（.moc）
+- 动作/表情：标准格式，正常可用
+
+**hiyori（日更）：**
+- 路径：/models/hiyori_vts/
+- 格式：Cubism 4（.moc3）
+- 动作/表情：VTube Studio 专用格式，显示异常，需重新导出
+
+**akari（灯）：**
+- 路径：/models/akari_vts/
+- 格式：Cubism 4（.moc3）
+- 动作/表情：VTube Studio 专用格式（.motion3.json, .exp3.json），需重新导出才能用
+
+---
+
+## 2026/06/03 开发记录
+
+### 1. 模型更新与新增
+
+#### 1.1 从桌面模型文件夹批量导入
+从 `C:/Users/Might/Desktop/模型/` 复制以下模型到 `public/models/`：
+
+**新增模型：**
+- `epsilon`（艾普西隆）→ `public/models/epsilon/`
+- `hiyori_free`（日和免费版）→ `public/models/hiyori_free/`
+- `tsumiki`（纺琦）→ `public/models/tsumiki/`
+- `kei_zh`（惠）→ `public/models/kei_zh/`
+
+**替换模型：**
+- `haru` → 新版本，功能更完善
+- `kei_zh` → 替换旧版本，解决穿模问题
+
+**保留模型（未改动）：**
+- `hiyori_vts`（日和付费版，保留备用）
+- `akari_vts`（灯，保留备用）
+- `tororo_vts`（傻狸，保留备用）
+
+#### 1.2 当前可用模型列表
+```javascript
+AVAILABLE_MODELS = [
+  { id: 'haru', name: '小春', modelFile: 'haru.model3.json' },
+  { id: 'epsilon', name: '艾普西隆', modelFile: 'Epsilon.model3.json' },
+  { id: 'hiyori_free', name: '日和(免费版)', modelFile: 'hiyori_free_t08.model3.json' },
+  { id: 'akari', name: '灯', modelFile: 'akari.model.json', folder: 'akari_vts' },
+  { id: 'kei', name: '惠', modelFile: 'kei_basic_free.model3.json', folder: 'kei_zh' },
+  { id: 'tsumiki', name: '纺琦', modelFile: 'tsumiki.model3.json' },
+  { id: 'hiyori', name: '日更', modelFile: 'hiyori.model.json', folder: 'hiyori_vts' },
+  { id: 'tororo', name: '傻狸', modelFile: 'tororo.model.json', folder: 'tororo_vts' }
+]
+```
+
+#### 1.3 Y 轴位置统一调整
+所有模型的 Y 坐标统一设置为 1：
+```javascript
+const modelYOffset = {
+  'haru': 1,
+  'epsilon': 1,
+  'hiyori': 1,
+  'hiyori_free': 1,
+  'akari': 1,
+  'kei': 1,
+  'tsumiki': 1
+}
+```
+
+---
+
+### 2. 口型同步功能
+
+#### 2.1 功能设计
+**目标：** 让虚拟形象在说话时嘴巴跟着动
+
+**技术方案：**
+- **简单方案（当前）**：播放音频 → 触发预制口型动画
+- **进阶方案（未来）**：播放音频 → 实时分析音频波形 → 动态驱动 LipSync 参数
+
+#### 2.2 实现方式
+在 `src/chat.js` 中添加两个方法：
+- `startLipSyncMotion()`：播放音频时触发口型动画
+- `stopLipSyncMotion()`：音频结束后恢复 idle 动画
+
+#### 2.3 各模型口型动作配置
+```javascript
+const motionMap = {
+  'haru': 'Tap',       // haru 的 Tap 组有口型动画
+  'tsumiki': 'Tap',
+  'epsilon': 'Tap',
+  'hiyori_free': 'Tap',
+  'kei': '01_kei_zh'   // kei 使用带声音的动作文件
+}
+```
+
+#### 2.4 当前问题
+- **问题：** `triggerMotion()` 和 `startLipSyncMotion()` 同时触发，都在播放 Tap 组动作，导致冲突
+- **现象：** 有时候嘴巴动，有时候不动
+- **原因：** 两套动作触发机制抢同一个动作组
+- **状态：** 待解决
+
+#### 2.5 进阶方案（未来实现）
+当简单方案效果不够好时，升级到进阶方案：
+- 使用 Web Audio API 的 `AudioContext` + `AnalyserNode` 实时分析音频
+- 根据音频波形数据（音量、频率）动态驱动模型的 LipSync 参数
+- 不同模型的 LipSync 参数名不同：
+  - haru: `PARAM_MOUTH_OPEN_Y`
+  - kei: `ParamMouthOpenY`
+- 需要添加参数平滑过渡，避免抖动
+
+**升级时只需要修改 `startLipSyncMotion()` 方法，其他代码不变。**
+
+#### 2.6 相关文件
+- `public/models/*/motion/*.motion3.json` - 口型动作文件
+- `public/models/*/*.moc3` - 模型数据
+- `src/chat.js` - 口型同步逻辑
+
+---
+
+### 3. 当前状态
+
+- 后端服务：✅ 运行中 (localhost:3001)
+- 前端页面：✅ 运行中 (localhost:5173)
+- TTS 语音：✅ 正常播放
+- 文字聊天：✅ 正常
+- 模型切换：✅ 8个模型可选
+- 口型同步：⚠️ 简单方案已实现，但存在动作冲突问题
+
+---
+
+### 4. 待解决问题
+
+1. **口型同步冲突** - `triggerMotion()` 和 `startLipSyncMotion()` 同时触发导致动作覆盖
+2. **日更模型穿模** - 付费版 hiyori_vts 显示异常，免费版 hiyori_free 正常
+3. **进阶口型方案** - 当前简单方案效果有限，需要升级到实时音频分析方案
