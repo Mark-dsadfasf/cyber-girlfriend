@@ -89,4 +89,27 @@ export async function checkModels() {
   return request('/api/models/check')
 }
 
+/**
+ * 语音识别（ASR）
+ * @param {Blob} audioBlob - 录音生成的音频 Blob（webm/opus 格式）
+ * @returns {object} { text: string } - 识别出的文字
+ */
+export async function recognizeSpeech(audioBlob) {
+  const formData = new FormData()
+  formData.append('audio', audioBlob, 'recording.webm')
+
+  const response = await fetch(`${API_BASE}/asr`, {
+    method: 'POST',
+    body: formData
+    // 注意：不设置 Content-Type，让 fetch 自动设置 multipart/form-data
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.error || `ASR failed: HTTP ${response.status}`)
+  }
+
+  return await response.json()
+}
+
 export { API_BASE }

@@ -718,3 +718,326 @@ bindLipsync(audioElement) {
 2. **AudioContext 重复 close 错误** - 需要修复
 3. **日更模型穿模** - 付费版 hiyori_vts 显示异常
 4. **进阶口型方案** - 需要官方 SDK 才能完整支持惠的 MotionSync
+
+---
+
+## 2026/06/04 开发记录
+
+### 1. 口型同步问题修复
+
+#### 问题描述
+- 长句子播放时，后半段嘴巴不动
+- 播放内置日语语音导致体验差
+- 循环播放口型动作导致页面卡死
+- 情绪动作与口型参数冲突
+
+#### 解决方案
+
+**1.1 消除内置日语语音**
+- 删除 `public/models/haru/sounds/` 下的所有 `.wav` 文件
+- 从 `haru.model3.json` 中删除所有 `Sound` 引用
+- 其他模型同理清理
+
+**1.2 新口型同步方案**
+采用 PIXI Ticker + AudioContext 时域分析，替代之前的循环播放方案：
+
+```javascript
+// 原理：
+// 1. 用 AudioContext AnalyserNode 实时分析音频时域数据（比频域更快）
+// 2. 在 PIXI Ticker（priority=-1）中，每帧强制写 PARAM_MOUTH_OPEN_Y
+// 3. 绕开 motion 动画系统的优先级覆盖问题
+// 4. 音频结束 / 主动停止时移除 Ticker 回调，口型归零
+
+startLipsyncMotion() {
+  // AudioContext + AnalyserNode 分析链
+  // 每帧在 PIXI Ticker 中用 RMS 计算音量并设置参数
+  const rms = Math.sqrt(sumSq / timeData.length)
+  const mouthOpen = Math.min(1.0, rms * 4.5)
+  // 以覆盖方式设置参数，忽略动画系统
+}
+
+stopLipsyncMotion() {
+  // 移除 Ticker 回调
+  // 关闭 AudioContext
+  // 口型归零
+}
+```
+
+**1.3 修复循环播放卡死问题**
+- 原方案：motion 完成回调里递归调用自己
+- 问题：motion 文件本身 Loop:true，motion() 返回的 Promise 不会 resolve
+- 解决：不使用循环播放，改用 PIXI Ticker 每帧强制设置参数
+
+**1.4 修复音频结束后多余动作触发**
+- 删除了 `cleanupAudio` 中的 `triggerMotion()` 和 `triggerExpression()`
+- 避免 TTS 播完后突然跳动作
+
+#### 当前状态
+- 口型同步：✅ 基本功能正常，嘴巴能跟随 TTS 动
+- 细微问题：长句子后半段可能嘴巴不动（浏览器 AudioContext suspend 或音量太小）
+- 内置日语：✅ 已消除
+
+---
+
+### 2. 模型名称修改
+
+将所有模型的 `name` 字段改为英文（与文件夹名一致）：
+
+```javascript
+AVAILABLE_MODELS = [
+  { id: 'haru', name: 'haru', ... },
+  { id: 'epsilon', name: 'epsilon', ... },
+  { id: 'hiyori_free', name: 'hiyori_free', ... },
+  { id: 'akari', name: 'akari', ... },
+  { id: 'kei', name: 'kei', ... },
+  { id: 'tsumiki', name: 'tsumiki', ... }
+]
+```
+
+---
+
+### 3. 后端持久化存储
+
+**新增接口：**
+- `GET /api/history` - 获取聊天记录
+- `POST /api/history` - 保存聊天记录
+
+**存储文件：** `chat_history.json`
+
+**前端逻辑：**
+- 优先从后端加载历史记录
+- 同时备份到 localStorage
+- 每次发消息同步到后端
+
+---
+
+### 4. 时间问题修复
+
+**问题：** AI 说出的时间与实际时间不符（如实际 3:00 说 1:49）
+
+**原因：** 之前 prompt 只传了时间段（凌晨/上午等），没传具体时间
+
+**修复：** 在 `contextInfo` 中添加具体时间
+```javascript
+// 修改前
+const contextInfo = `【当前场景】现在是${dayOfWeek}，${timePeriod}，${season}天。`
+
+// 修改后
+const contextInfo = `【当前场景】现在是${hour}点${minute}分，${dayOfWeek}，${timePeriod}，${season}天。`
+```
+
+---
+
+### 5. 今日文件变更
+
+**新增文件：**
+- `chat_history.json` - 聊天记录持久化存储
+
+**修改文件：**
+- `src/chat.js` - 口型同步重写、音频结束逻辑修改、模型名称修改
+- `public/models/haru/haru.model3.json` - 删除所有 Sound 引用
+- `public/models/haru/sounds/` - 删除所有 .wav 文件
+- `server.js` - 添加 /api/history 接口、contextInfo 添加具体时间
+- `WORKLOG.md` - 本次更新
+
+---
+
+### 6. 当前状态
+
+- 后端服务：✅ 运行中 (localhost:3001)
+- 前端页面：✅ 运行中 (localhost:5173)
+- TTS 语音：✅ 正常播放
+- 文字聊天：✅ 正常
+- 口型同步：⚠️ 基本可用，有小幅改进空间
+- 模型切换：✅ 6个模型可用
+- 聊天记录持久化：✅ 已实现
+- 时间准确性：✅ 已修复
+
+---
+
+### 7. 待优化
+
+1. **口型幅度调整** - `rms * 4.5` 系数可能需要根据实际效果调整
+2. **长音频口型持续** - 长句子后半段嘴巴不动的问题
+3. **其他模型口型** - 不同模型的嘴巴参数名可能不同（haru: PARAM_MOUTH_OPEN_Y）
+4. **平滑处理** - `smoothingTimeConstant = 0.0` 可能需要适当平滑避免抖动
+
+---
+
+## 2026/06/05 开发记录
+
+### 1. 聊天记录存储问题修复
+
+**问题：** `/api/history` 接口返回 `413 Payload Too Large`
+
+**原因：** 之前的设计是前端每次把所有历史消息 POST 给后端存储。当对话很长时，单次请求体过大超过 Express 默认限制。
+
+**解决方案：**
+- 改为**增量追加模式**：前端只传递新消息，不传全部历史
+- 后端保存时只追加新消息，去重后裁剪到最近 50 条
+- 前端不再无脑全量同步，改为每次只同步最新一条
+
+**修改文件：**
+- `server.js`：`saveHistory()` 函数改为增量追加
+- `src/chat.js`：`saveHistory([msg])` 只传单条新消息
+
+### 2. 口型同步问题修复
+
+**问题表现：**
+- 说话时嘴巴偶尔动，偶尔不动
+- 调试日志显示 `before` 值总是被重置（非零值被覆盖成 0）
+- 内置 LipSync 控制器在不断覆盖我们的写入值
+
+**根因：** `internalModel.lipSync` 内置控制器在每帧自动重置 `PARAM_MOUTH_OPEN_Y`，导致我们自己设置的值被覆盖
+
+**解决方案：**
+- 在 `startLipsyncMotion()` 启动前，先设置 `internalModel.lipSync = false` 禁用内置控制器
+- 在 `stopLipsyncMotion()` 停止后，恢复 `internalModel.lipSync = true`
+
+**修改文件：**
+- `src/chat.js`：`startLipsyncMotion()` 和 `stopLipsyncMotion()` 添加 lipSync 控制切换
+
+**验证结果：**
+- 调试日志显示 `after` 值都正确等于写入值，没有被覆盖
+- 口型随 RMS 音量持续张合，不再中断
+
+### 3. 调试日志清理
+
+**移除的日志：**
+- `[口型写入]` 每 30 帧打印一次 before/after 值
+- `[口型]` 每 30 帧打印 rms/mouthOpen 值
+
+**保留的日志（关键节点）：**
+- `口型同步已停止`
+- `口型同步 Ticker 已启动`
+- `已禁用内置 LipSync 控制器`
+
+### 4. 当前状态
+
+| 功能 | 状态 |
+|---|---|
+| 后端服务 | ✅ 运行中 (localhost:3001) |
+| 前端页面 | ✅ 运行中 (localhost:5173) |
+| TTS 语音 | ✅ 正常播放 |
+| 文字聊天 | ✅ 正常 |
+| 口型同步 | ✅ 已修复，嘴巴持续张合 |
+| 聊天记录持久化 | ✅ 增量追加模式，50条上限 |
+
+### 5. 待解决问题
+
+1. **肢体动作触发不稳定** — 有时候动有时候不动，可能和动作组配置有关
+2. **表情丰富度** — 情绪识别后触发的表情还不够丰富
+3. **其他模型口型** — haru 以外的模型嘴巴参数名可能不同，需要适配
+
+---
+
+## 2026/06/14 开发记录
+
+### 1. 语音输入功能开发
+
+#### 1.1 需求背景
+用户希望能够直接用麦克风和虚拟女友对话，而不是手动打字输入。
+
+#### 1.2 方案探索
+
+**方案1：MiniMax ASR API（后端录音识别）**
+- 技术栈统一（都是 MiniMax）
+- 但个人用户没有 ASR 权限，API 返回 404
+- 尝试多个端点：`/v1/speech_to_text`、`/v1/s2t` 均返回 404
+
+**方案2：Web Speech API（前端直接识别）**
+- 浏览器原生语音识别，无需后端
+- 完全免费，中文支持好
+- 依赖浏览器（Chrome/Edge 效果最佳）
+- 隐私安全（录音留在本地）
+
+#### 1.3 实现过程
+
+**第一阶段：MiniMax ASR 尝试**
+- 添加 `multer` 中间件处理文件上传
+- 添加 `POST /asr` 后端路由
+- 前端使用 `MediaRecorder` 录音
+- 问题：Buffer 无法直接用于 FormData，需要用 `Blob` 包装
+- 问题：MiniMax ASR 端点返回 404，权限不足
+
+**第二阶段：Mock 模式测试**
+- 为了验证流程完整性，使用 Mock 模式直接返回固定文字
+- 验证了录音 → 识别 → 发送 → AI回复 → TTS → 口型同步 整个流程正常
+
+**第三阶段：Web Speech API 实现**
+- 替换 `MediaRecorder` + ASR 为 `Web Speech API`
+- 前端代码改动：
+  - 移除 `recognizeSpeech` API 调用
+  - `startRecording()` 改为调用 `SpeechRecognition.start()`
+  - 实时返回识别结果，无需录音上传
+- 后端 `/asr` 路由保留作为备用（或可删除）
+
+#### 1.4 最终实现
+
+**前端修改（src/chat.js）：**
+```javascript
+initSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+  this.recognition = new SpeechRecognition()
+  this.recognition.lang = 'zh-CN'
+  this.recognition.continuous = false
+  this.recognition.interimResults = false
+
+  this.recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript
+    this.sendMessageFromVoice(text)
+  }
+}
+
+startRecording() {
+  this.recognition.start()
+  this.isRecording = true
+}
+```
+
+**HTML 修改（index.html）：**
+- 添加 `#mic-btn` 麦克风按钮
+- 添加录音状态 CSS 样式（红色闪烁）
+
+#### 1.5 相关文件
+
+**新增/修改：**
+- `package.json` - 添加 `multer`、`form-data` 依赖
+- `server.js` - 添加 `/asr` 路由（当前 Mock 模式）
+- `src/api.js` - 添加 `recognizeSpeech()` 函数
+- `src/chat.js` - 添加语音录音功能、Web Speech API 实现
+- `index.html` - 添加麦克风按钮和 CSS
+
+**清理：**
+- `public/audio/tts_*.mp3` - 清理所有旧 TTS 临时文件
+
+#### 1.6 当前状态
+
+| 功能 | 状态 |
+|---|---|
+| 后端服务 | ✅ 运行中 (localhost:3001) |
+| 前端页面 | ✅ 运行中 (localhost:5173) |
+| 文字聊天 | ✅ 正常 |
+| TTS 语音 | ✅ 正常 |
+| 口型同步 | ✅ 正常 |
+| **语音输入** | ✅ **Web Speech API 实现，可正常使用** |
+
+#### 1.7 使用方法
+
+1. 使用 **Chrome 或 Edge 浏览器**访问 `http://localhost:5173`
+2. 点击麦克风按钮 🎤
+3. 浏览器会请求麦克风权限，**请允许**
+4. 对着麦克风说话
+5. 说完后自动发送识别内容，AI 回复并播放 TTS
+
+#### 1.8 已知问题
+
+- `no-speech` 错误：第一次点击没说话时会触发，不是真正错误
+- 浏览器兼容性：建议使用 Chrome/Edge，Firefox 支持稍差
+
+### 2. 待优化/待解决
+
+1. **ASR 正式接入** — 未来如果有机会获得 MiniMax ASR 权限，可改回后端识别
+2. **连续对话** — 当前是单次识别后可考虑连续识别模式
+3. **噪声抑制** — Web Speech API 对环境噪音敏感，可考虑前端降噪
+

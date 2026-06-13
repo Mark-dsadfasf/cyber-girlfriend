@@ -1,10 +1,12 @@
 import express from 'express'
 import cors from 'cors'
 import fetch from 'node-fetch'
+import FormDataNode from 'form-data'
 import fs from 'fs'
 import path from 'path'
+import multer from 'multer'
 import { fileURLToPath } from 'url'
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -32,6 +34,12 @@ app.use(cors())
 app.use(express.json())
 app.use('/audio', express.static(path.join(__dirname, 'public', 'audio')))
 
+// multer 配置：内存存储，方便后续转发到 MiniMax API
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 限制 10MB
+})
+
 const API_KEY = process.env.MINIMAX_API_KEY || ''
 
 app.post('/chat', async (req, res) => {
@@ -56,6 +64,7 @@ app.post('/chat', async (req, res) => {
   // 构建时间上下文
   const now = new Date()
   const hour = now.getHours()
+  const minute = now.getMinutes()
   const month = now.getMonth() + 1
   const dayOfWeek = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][now.getDay()]
   let season = ''
@@ -74,7 +83,7 @@ app.post('/chat', async (req, res) => {
   else if (hour >= 18 && hour < 19) timePeriod = '傍晚'
   else if (hour >= 19 && hour < 23) timePeriod = '晚上'
 
-  const contextInfo = `【当前场景】现在是${dayOfWeek}，${timePeriod}，${season}天。`
+  const contextInfo = `【当前场景】现在是${hour}点${minute}分，${dayOfWeek}，${timePeriod}，${season}天。`
 
   const systemPrompt = `${contextInfo}
 
@@ -153,7 +162,7 @@ app.post('/chat', async (req, res) => {
         'Authorization': `Bearer ${API_KEY}`
       },
       body: JSON.stringify({
-        model: 'MiniMax-M2.7',
+        model: 'MiniMax-M3',
         messages: messages,
         max_tokens: 1024,
         temperature: 0.9
@@ -213,7 +222,7 @@ app.get('/autochat', async (req, res) => {
         'Authorization': `Bearer ${API_KEY}`
       },
       body: JSON.stringify({
-        model: 'MiniMax-M2.7',
+        model: 'MiniMax-M3',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: '你在干嘛呀？' }
@@ -332,6 +341,20 @@ app.post('/tts', async (req, res) => {
   }
 })
 
+// 语音识别接口（ASR）- Mock 模式
+app.post('/asr', upload.single('audio'), async (req, res) => {
+  console.log('ASR 请求 received (Mock 模式), file:', req.file ? `size=${req.file.size}, mimetype=${req.file.mimetype}` : 'null')
+
+  if (!req.file) {
+    console.log('错误: 缺少 audio 文件')
+    return res.status(400).json({ error: '缺少 audio 文件' })
+  }
+
+  // Mock 模式：直接返回固定文字
+  console.log('Mock 模式: 直接返回测试文字')
+  res.json({ text: '你好呀，我是你的赛博女友～' })
+})
+
 // 时间问候接口
 app.get('/greeting', (req, res) => {
   const hour = new Date().getHours()
@@ -360,6 +383,65 @@ app.get('/greeting', (req, res) => {
   }
 
   res.json({ text: greeting })
+})
+
+// ========== 聊天记录持久化 ==========
+const HISTORY_FILE = path.join(__dirname, 'chat_history.json')
+const MAX_HISTORY = 50  // 最多保留最近 50 条
+
+function loadHistory() {
+  try {
+    if (existsSync(HISTORY_FILE)) {
+      return JSON.parse(readFileSync(HISTORY_FILE, 'utf8'))
+    }
+  } catch (e) {
+    console.error('加载历史记录失败:', e)
+  }
+  return []
+}
+
+function saveHistory(newMessages) {
+  try {
+    // 改为增量追加模式：只追加新消息，不覆盖全部
+    const history = loadHistory()
+    // 过滤掉已有的自动聊天消息（autoChat=true），保留用户主动发的和助手回复
+    const filteredHistory = history.filter(m => m.autoChat)
+    const combined = [...filteredHistory, ...newMessages]
+    // 只保留最近 MAX_HISTORY 条
+    const trimmed = combined.slice(-MAX_HISTORY)
+    writeFileSync(HISTORY_FILE, JSON.stringify(trimmed, null, 2))
+  } catch (e) {
+    console.error('保存历史记录失败:', e)
+  }
+}
+
+// 获取聊天记录（分页）
+app.get('/api/history', (req, res) => {
+  const page = parseInt(req.query.page) || 1
+  const limit = parseInt(req.query.limit) || 50
+  const history = loadHistory()
+  const total = history.length
+  const start = Math.max(0, total - limit * page)
+  const end = start + limit
+  const paginatedHistory = history.slice(start, end)
+  res.json({
+    history: paginatedHistory,
+    total,
+    page,
+    hasMore: start > 0
+  })
+})
+
+// 追加聊天记录（增量模式）
+app.post('/api/history', (req, res) => {
+  const { history } = req.body
+  if (!Array.isArray(history)) {
+    return res.status(400).json({ error: 'invalid history' })
+  }
+  if (history.length > 0) {
+    saveHistory(history)
+  }
+  res.json({ success: true, count: history.length })
 })
 
 app.listen(PORT, () => {

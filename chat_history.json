@@ -1,0 +1,9 @@
+[
+  {
+    "role": "assistant",
+    "content": "<think>\n\nThe user is sending a voice message, and the text seems to be garbled/asr result. They also repeated themselves. I need to respond naturally as the girlfriend character, pretending I heard a voice message but the text is garbled. I should ask what they said, keeping it natural and short. I should not point out the repetition.\n\nSince it's a voice message and the text is garbled, I should respond as if I couldn't hear it clearly or ask them to say it again, but in a natural girlfriend way.\n\n</think>\n语音听不太清 你再说一遍嘛",
+    "time": 1781370779034,
+    "autoChat": false,
+    "isGreeting": false
+  }
+]
